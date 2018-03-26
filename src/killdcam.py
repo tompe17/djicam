@@ -20,11 +20,13 @@ def kill_callback(data):
         have_camera_info = False
     else:
         print "Driver seems dead, tryng to kill it so restart will work"
-        procs = [p for p in psutil.process_iter() if 'joy_node' in " ".join(p.cmdline())]
+        procs = [p for p in psutil.process_iter() if 'djicam' in " ".join(p.cmdline())]
         for p in procs:
             " ".join(p.cmdline())
             print "KILL:", p.pid
-            os.kill(p.pid, signal.SIGKILL)
+            # os.kill(p.pid, signal.SIGKILL)
+            os.kill(p.pid, signal.SIGINT)
+            # or should it be SIGINT
         have_camera_info = True
     
 

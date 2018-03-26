@@ -3,6 +3,8 @@
 import rospy
 import psutil
 import re
+import os
+import signal
 
 from sensor_msgs.msg import CameraInfo
 
@@ -18,15 +20,17 @@ def kill_callback(data):
         have_camera_info = False
     else:
         print "Driver seems dead, tryng to kill it so restart will work"
-        for proc in psutil.process_iter():
-            if re.search("djicam", " ".join(proc.cmdline())):
-                print " ".join(proc.cmdline())
+        procs = [p for p in psutil.process_iter() if 'joy_node' in " ".join(p.cmdline())]
+        for p in procs:
+            " ".join(p.cmdline())
+            print "KILL:", p.pid
+            os.kill(p.pid, signal.SIGKILL)
         have_camera_info = True
     
 
 if __name__ == '__main__':
 
-    rospy.init_node('killdjicam', anonymous=False)
+    rospy.init_node('killdcam', anonymous=False)
 
     rospy.Subscriber("dji_sdk/camera_info", CameraInfo, camera_info_callback)
     rospy.Timer(rospy.Duration(1), kill_callback)

@@ -18,6 +18,7 @@
 #include "cv.h"
 #include "highgui.h"
 #include "djicam.h"
+#include <boost/thread.hpp>
 
 typedef unsigned char   BYTE;
 #define IMAGE_W 1280
@@ -25,10 +26,17 @@ typedef unsigned char   BYTE;
 #define FRAME_SIZE              IMAGE_W*IMAGE_H*3
 
 
-unsigned char buffer[FRAME_SIZE] = {0};
+unsigned char buffer0[FRAME_SIZE] = {0};
+unsigned char buffer1[FRAME_SIZE] = {0};
 unsigned int frame_size = 0;
-unsigned int nframe = 0;
 FILE *fp;
+int counter = 0;
+int pdata_avail0 = 0;
+int pdata_avail1 = 0;
+int buf0_avail = 1;
+int buf1_avail = 1;
+unsigned char *pData0 = 0;
+unsigned char *pData1 = 0;
 
 
 struct sRGB{
@@ -171,6 +179,57 @@ IplImage* YUV420_To_IplImage(unsigned char* pYUV420, int width, int height)
 	return image;
 }
 
+void do_work0 () {
+  NV12ToRGB(buffer0,pData0,1280,720);
+  buf0_avail = 1;
+  pdata_avail0 = 1;
+}
+
+void do_work1 () {
+  NV12ToRGB(buffer1,pData1,1280,720);
+  buf1_avail = 1;
+  pdata_avail1 = 1;
+}
+
+void get_pdata () {
+  while (1) {
+    if (counter == 0) {
+      unsigned int nframe = 0;
+      while (!buf0_avail) {
+	usleep(1000);
+      }
+      int ret = manifold_cam_read(buffer0, &nframe, 1);
+      buf0_avail = 0;
+      if(ret != -1) {
+	while (pdata_avail0) {
+	  usleep(1000);
+	}
+	boost::thread wthread(do_work0);
+      }
+    }
+    if (counter == 1) {
+      unsigned int nframe = 0;
+      while (!buf1_avail) {
+	usleep(1000);
+      }
+      int ret = manifold_cam_read(buffer1, &nframe, 1);
+      buf1_avail = 0;
+      if(ret != -1) {
+	while (pdata_avail1) {
+	  usleep(1000);
+	}
+	boost::thread wthread(do_work1);
+      }
+    }
+    counter++;
+    // fprintf (stderr, "COUNTER: %d - %d\n", counter, pdata_avail);
+    if (counter == 2) {
+      counter = 0;
+    }
+    usleep (1000);
+  }
+}
+
 int main(int argc, char **argv)
 {
 	ros::init(argc,argv,"image_raw");
@@ -182,8 +241,8 @@ int main(int argc, char **argv)
 	int to_mobile = 0;
 
 	IplImage *pRawImg;
+	IplImage *pTmpImg;
 	IplImage *pImg;
-	unsigned char *pData;
 
 	int mode = GETBUFFER_MODE;
 
@@ -196,7 +255,8 @@ int main(int argc, char **argv)
 	if(gray_or_rgb){
 		pRawImg = cvCreateImage(cvSize(IMAGE_W, IMAGE_H),IPL_DEPTH_8U,3);
 		pImg = cvCreateImage(cvSize(640, 480),IPL_DEPTH_8U,3);
-		pData  = new unsigned char[1280 * 720 * 3];
+		pData0  = new unsigned char[1280 * 720 * 3];
+		pData1  = new unsigned char[1280 * 720 * 3];
 	} else{
 		pRawImg = cvCreateImage(cvSize(IMAGE_W, IMAGE_H),IPL_DEPTH_8U,1);
 		pImg = cvCreateImage(cvSize(640, 480),IPL_DEPTH_8U,1);
@@ -245,44 +305,67 @@ int main(int argc, char **argv)
 		printf("manifold init error \n");
 		return -1;
 	}
+	
+	
+	boost::thread pdatathread (get_pdata);
+	//	fprintf (stderr, "MAIN THREAD: %d\n", pdata_avail);
 
-	while(1)
-	{
-		ret = manifold_cam_read(buffer, &nframe, 1);
+	while(1) {
+	  // fprintf (stderr, "MAIN THREAD: %d", pdata_avail);
 
-		if(ret != -1)
-		{
+	  if (pdata_avail0 || pdata_avail1) {
+	    if(gray_or_rgb){
+			  
+	      //pTmpImg = YUV420_To_IplImage(buffer, 1280,720);
+	      
+	      /*			  
+					  cv::Mat picYV12 = cv::Mat(nHeight * 3/2, nWidth, CV_8UC1, yv12DataBuffer);
+					  cv::Mat picBGR;
+					  cv::cvtColor(picYV12, picBGR, CV_YUV2BGR_YV12);
+	      */
+	      //			  cv::imwrite("/tmp.bmp", pTmpImg);  //only for test
+	      
+	      //			  memcpy(pRawImg->imageData,pTmpImg->imageData,FRAME_SIZE);
+	      if (pdata_avail0) {
+		memcpy(pRawImg->imageData,pData0,FRAME_SIZE);
+		pdata_avail0 = 0;
+	      }
+	      if (pdata_avail1) {
+		memcpy(pRawImg->imageData,pData1,FRAME_SIZE);
+		pdata_avail1 = 0;
+	      }
+	    } else {
+	      if (pdata_avail0) {
+		memcpy(pRawImg->imageData,buffer0,FRAME_SIZE/3);
+		pdata_avail0 = 0;
+	      }
+	      if (pdata_avail1) {
+		memcpy(pRawImg->imageData,buffer1,FRAME_SIZE/3);
+		pdata_avail1 = 0;
+	      }
+	    }
+	    cvResize(pRawImg,pImg,CV_INTER_LINEAR);
 
-			if(gray_or_rgb){
-				NV12ToRGB(buffer,pData,1280,720);
-				memcpy(pRawImg->imageData,pData,FRAME_SIZE);
-			}else{
-				memcpy(pRawImg->imageData,buffer,FRAME_SIZE/3);
-			}
-			cvResize(pRawImg,pImg,CV_INTER_LINEAR);
-
-			time=ros::Time::now();
-			cvi.header.stamp = time;
-			cvi.header.frame_id = "image";
-			if(gray_or_rgb){
-				cvi.encoding = "bgr8";
-			}else{
-				cvi.encoding = "mono8";
-			}
-			cvi.image = pImg;
-			cvi.toImageMsg(im);
-			cam_info.header.seq = nCount;
-			cam_info.header.stamp = time;
-			caminfo_pub.publish(cam_info);
-			image_pub.publish(im);
-
-			ros::spinOnce();
-			nCount++;
-
-		}
-		else 
-			break;
-		usleep(1000);
+	    time=ros::Time::now();
+	    cvi.header.stamp = time;
+	    cvi.header.frame_id = "image";
+	    if(gray_or_rgb){
+	      cvi.encoding = "bgr8";
+	    }else{
+	      cvi.encoding = "mono8";
+	    }
+	    cvi.image = pImg;
+	    cvi.toImageMsg(im);
+	    cam_info.header.seq = nCount;
+	    cam_info.header.stamp = time;
+	    caminfo_pub.publish(cam_info);
+	    image_pub.publish(im);
+	    
+	    ros::spinOnce();
+	    nCount++;
+	    
+	  }
+	  usleep(1000);
 	}
 	while(!manifold_cam_exit())
 	{

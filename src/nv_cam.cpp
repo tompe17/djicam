@@ -192,19 +192,22 @@ void do_work1 () {
 }
 
 void get_pdata () {
+  int block = 1;
   while (1) {
     if (counter == 0) {
       unsigned int nframe = 0;
       while (!buf0_avail) {
 	usleep(1000);
       }
-      int ret = manifold_cam_read(buffer0, &nframe, 1);
+      int ret = manifold_cam_read(buffer0, &nframe, block);
       buf0_avail = 0;
       if(ret != -1) {
 	while (pdata_avail0) {
 	  usleep(1000);
 	}
 	boost::thread wthread(do_work0);
+      } else {
+	usleep(1000);
       }
     }
     if (counter == 1) {
@@ -212,13 +215,15 @@ void get_pdata () {
       while (!buf1_avail) {
 	usleep(1000);
       }
-      int ret = manifold_cam_read(buffer1, &nframe, 1);
+      int ret = manifold_cam_read(buffer1, &nframe, block);
       buf1_avail = 0;
       if(ret != -1) {
 	while (pdata_avail1) {
 	  usleep(1000);
 	}
 	boost::thread wthread(do_work1);
+      } else {
+	usleep(1000);
       }
     }
     counter++;
@@ -254,8 +259,8 @@ int main(int argc, char **argv)
 	printf("%d\n",gray_or_rgb);
 	if(gray_or_rgb){
 		pRawImg = cvCreateImage(cvSize(IMAGE_W, IMAGE_H),IPL_DEPTH_8U,3);
-		// pImg = cvCreateImage(cvSize(640, 480),IPL_DEPTH_8U,3);
-		pImg = cvCreateImage(cvSize(1280, 720),IPL_DEPTH_8U,3);
+		pImg = cvCreateImage(cvSize(640, 480),IPL_DEPTH_8U,3);
+		// pImg = cvCreateImage(cvSize(1280, 720),IPL_DEPTH_8U,3);
 
 		pData0  = new unsigned char[1280 * 720 * 3];
 		pData1  = new unsigned char[1280 * 720 * 3];
@@ -358,15 +363,15 @@ int main(int argc, char **argv)
 	    }
 	    cvi.image = pImg;
 	    cvi.toImageMsg(im);
-	    cam_info.header.seq = nCount;
+	    // cam_info.header.seq = nCount;
 	    cam_info.header.stamp = time;
 	    caminfo_pub.publish(cam_info);
 	    image_pub.publish(im);
 	    
-	    ros::spinOnce();
 	    nCount++;
 	    
 	  }
+	  ros::spinOnce();
 	  usleep(1000);
 	}
 	while(!manifold_cam_exit())

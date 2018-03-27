@@ -1,5 +1,5 @@
 <launch>
-  <node pkg="djicam" type="djicam" name="djicam" output="screen">
+  <node pkg="djicam" type="djicam" name="djicam" output="screen" respawn="true" >
     <!-- node parameters -->
     <param name="gray_or_rgb" type="int" value="1"/>
     <param name="to_mobile" type="int" value="1"/>

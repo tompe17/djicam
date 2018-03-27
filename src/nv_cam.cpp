@@ -256,6 +256,7 @@ int main(int argc, char **argv)
 		pRawImg = cvCreateImage(cvSize(IMAGE_W, IMAGE_H),IPL_DEPTH_8U,3);
 		// pImg = cvCreateImage(cvSize(640, 480),IPL_DEPTH_8U,3);
 		pImg = cvCreateImage(cvSize(1280, 720),IPL_DEPTH_8U,3);
+
 		pData0  = new unsigned char[1280 * 720 * 3];
 		pData1  = new unsigned char[1280 * 720 * 3];
 	} else{
